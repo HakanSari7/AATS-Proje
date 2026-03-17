@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AATS | Akıllı Arıza Takip Sistemi</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0056b3">
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+        --primary-color: #1e3a8a;
+        --secondary-color: #3b82f6;
+        --accent-color: #f59e0b;
+        --bg-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-main: #0f172a;
+        --text-muted: #64748b;
+        --border-color: #e2e8f0;
+        --input-bg: #ffffff;
+        --map-filter: grayscale(10%);
+    }
+    body.dark-mode {
+        --primary-color: #3b82f6;
+        --bg-color: #0f172a;
+        --card-bg: #1e293b;
+        --text-main: #f1f5f9;
+        --text-muted: #94a3b8;
+        --border-color: #334155;
+        --input-bg: #334155;
+        --map-filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(85%);
+    }
+    body {
+        background-color: var(--bg-color);
+        color: var(--text-main);
+        font-family: 'Inter', sans-serif;
+        transition: all 0.3s ease;
+        height: 100vh; overflow: hidden;
+    }
+    .navbar-official {
+        background-color: var(--card-bg);
+        border-bottom: 1px solid var(--border-color);
+        padding: 0 20px; height: 60px;
+        display: flex; justify-content: space-between; align-items: center;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        z-index: 10; position: relative;
+    }
+    .brand-text { font-weight: 700; font-size: 1.1rem; color: var(--text-main); letter-spacing: 0.5px; }
+
+    .main-wrapper { display: flex; height: calc(100vh - 60px); }
+
+    .left-panel {
+        width: 400px; padding: 20px; background: var(--card-bg);
+        border-right: 1px solid var(--border-color); overflow-y: auto;
+        display: flex; flex-direction: column;
+        z-index: 2;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+    }
+    .right-panel { flex: 1; position: relative; z-index: 1; }
+
+    /* --- RESPONSIVE AYARLARI --- */
+    @media (max-width: 768px) {
+        body { overflow: auto; height: auto; }
+        .main-wrapper { flex-direction: column-reverse; height: auto; }
+        .left-panel { width: 100%; height: auto; border-right: none; border-top: 1px solid var(--border-color); overflow: visible; padding-bottom: 80px;}
+        .right-panel { height: 50vh; min-height: 350px; }
+        .map-info-card { width: 95%; bottom: 10px; padding: 10px; }
+        .gps-btn { bottom: 90px !important; }
+    }
+
+    .form-group label {
+        font-size: 0.75rem; text-transform: uppercase; font-weight: 700;
+        color: var(--text-muted); margin-bottom: 5px; display: block;
+    }
+    .form-control {
+        background-color: var(--input-bg); border: 1px solid var(--border-color);
+        color: var(--text-main); border-radius: 8px; padding: 10px; font-size: 0.9rem;
+    }
+    .form-control:focus { border-color: var(--secondary-color); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+
+    .btn-official {
+        background-color: var(--primary-color); color: white; border: none;
+        padding: 14px; border-radius: 8px; font-weight: 600; transition: 0.2s;
+        width: 100%; letter-spacing: 0.5px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .btn-official:hover { background-color: var(--secondary-color); transform: translateY(-1px); }
+
+    #map { height: 100%; width: 100%; }
+    body.dark-mode .leaflet-tile-pane { filter: var(--map-filter); }
+
+    /* --- DOSYA YÜKLEME ALANI --- */
+    .file-upload-wrapper {
+        position: relative; width: 100%; height: 90px;
+        border: 2px dashed var(--border-color); border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--bg-color); transition: all 0.3s ease;
+        cursor: pointer; overflow: hidden;
+    }
+    .file-upload-wrapper:hover { border-color: var(--primary-color); background: rgba(59, 130, 246, 0.05); }
+    .file-upload-wrapper input { position: absolute; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;}
+    .file-upload-content { text-align: center; color: var(--text-muted); pointer-events: none; z-index: 1;}
+    .file-upload-content i { font-size: 1.5rem; margin-bottom: 5px; display: block; }
+
+    /* --- MAP INFO CARD --- */
+    .map-info-card {
+        position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+        z-index: 1000; width: 90%; max-width: 450px;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 16px; padding: 15px 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        display: flex; align-items: center; gap: 15px;
+        transition: all 0.3s ease;
+    }
+    body.dark-mode .map-info-card {
+        background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .icon-box {
+        width: 45px; height: 45px; border-radius: 12px;
+        background: var(--primary-color); color: white;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+        box-shadow: 0 4px 10px rgba(30, 58, 138, 0.3);
+        transition: transform 0.2s;
+    }
+    .status-content h6 { margin: 0; font-weight: 700; font-size: 0.95rem; color: var(--text-main); }
+    .status-content p { margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.2; }
+
+    .pulse-icon { animation: pulse-blue 1.5s infinite; }
+    @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+
+    /* --- GPS BUTONU --- */
+    .gps-btn {
+        position: absolute; bottom: 120px; right: 10px; z-index: 999;
+        background: var(--card-bg); color: var(--text-main);
+        width: 44px; height: 44px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer;
+        border: 1px solid var(--border-color); transition: 0.2s; font-size: 1.2rem;
+    }
+    .gps-btn:hover { background: var(--bg-color); color: var(--primary-color); transform: scale(1.05); }
+
+    /* Modal Tweaks */
+    .receipt-header { padding: 20px; text-align: center; color: white; border-top-left-radius: 8px; border-top-right-radius: 8px; transition: background-color 0.3s; }
+    .receipt-body { padding: 30px; background: var(--card-bg); border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+    .receipt-row { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px dashed var(--border-color); padding-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar-official">
+    <div class="d-flex align-items-center">
+        <i class="fas fa-network-wired text-primary fs-4 me-2"></i>
+        <span class="brand-text">AATS <span style="font-weight:300; opacity:0.7">| Tarsus</span></span>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="toggleDarkMode()">
+            <i class="fas fa-moon me-1"></i>
+        </button>
+    </div>
+</nav>
+
+<div class="main-wrapper">
+    <div class="left-panel">
+        <div class="mb-4">
+            <h5 class="fw-bold mb-1" style="color:var(--text-main)">Arıza Bildirimi</h5>
+            <small class="text-muted">Lütfen konum ve arıza detaylarını giriniz.</small>
+        </div>
+
+        <form id="arizaForm">
+            <div class="row g-2 mb-3">
+                <div class="col-6"><div class="form-group"><label>İL</label><input type="text" class="form-control" value="Mersin" readonly></div></div>
+                <div class="col-6"><div class="form-group"><label>İLÇE</label><input type="text" class="form-control" value="Tarsus" readonly></div></div>
+            </div>
+
+            <div class="form-group mb-3">
+                <label><i class="fas fa-map-marker-alt me-1"></i> MAHALLE</label>
+                <input type="text" id="mahalle" class="form-control" placeholder="Örn: Şehitishak" oninput="autoLocate()">
+            </div>
+            <div class="form-group mb-3">
+                <label><i class="fas fa-road me-1"></i> SOKAK / CADDE</label>
+                <input type="text" id="sokak" class="form-control" placeholder="Örn: Atatürk Cad." oninput="autoLocate()">
+            </div>
+
+            <div class="form-group mb-3">
+                <label><i class="fas fa-edit me-1"></i> ARIZA TANIMI</label>
+                <textarea id="aciklama" class="form-control" rows="4" placeholder="Lütfen arızayı detaylandırın..."></textarea>
+            </div>
+
+            <div class="form-group mb-4">
+                <label><i class="fas fa-camera me-1"></i> FOTOĞRAF </label>
+                <div class="file-upload-wrapper">
+                    <input type="file" id="foto" accept="image/*" onchange="previewFile()">
+                    <div class="file-upload-content" id="file-text">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <span style="font-size: 0.85rem;">Fotoğrafı Sürükleyin veya Seçin</span>
+                    </div>
+                </div>
+            </div>
+
+            <input type="hidden" id="lat"><input type="hidden" id="lng">
+
+            <button type="button" class="btn-official" onclick="submitForm()">
+                <i class="fas fa-paper-plane me-2"></i> BİLDİRİMİ GÖNDER
+            </button>
+        </form>
+    </div>
+
+    <div class="right-panel">
+        <div id="map"></div>
+
+        <button class="gps-btn" onclick="getLocation()" title="Konumumu Bul">
+            <i class="fas fa-crosshairs"></i>
+        </button>
+
+        <div class="map-info-card">
+            <div class="icon-box" id="status-icon">
+                <i class="fas fa-map-marked-alt"></i>
+            </div>
+            <div class="status-content">
+                <h6 id="status-title">Konum Seçimi</h6>
+                <p id="status-desc">Adres yazın veya pini harita üzerinde sürükleyin.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="successModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content modal-receipt">
+      <div class="receipt-header" id="receipt-header-bg">
+        <div class="mb-2"><i id="receipt-icon" class="fas fa-check-circle fa-4x"></i></div>
+        <h5 class="mb-0 fw-bold">KAYIT ALINDI</h5>
+      </div>
+      <div class="receipt-body">
+          <div class="text-center mb-3">
+              <span class="badge bg-light text-dark border px-3 py-2">Takip No: <span id="track-id" class="fw-bold font-monospace">-</span></span>
+          </div>
+          <div class="receipt-row"><span class="text-muted">Tür </span><span class="fw-bold text-primary" id="modal-tur">-</span></div>
+          <div class="receipt-row"><span class="text-muted">Öncelik</span><span class="fw-bold" id="modal-oncelik">-</span></div>
+          <div class="receipt-row"><span class="text-muted">Tahmini Süre</span><span class="fw-bold text-danger"><span id="modal-sure">-</span> Saat</span></div>
+          <button class="btn btn-outline-dark w-100 btn-sm mt-4" onclick="location.reload()">KAPAT</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="mergedModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-receipt">
+        <div class="receipt-header bg-warning text-dark">
+          <h5 class="mb-0 fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>MEVCUT KAYIT</h5>
+        </div>
+        <div class="receipt-body text-center">
+            <p class="text-muted">Bu konumda zaten kayıtlı bir arıza var. Bildiriminiz destek olarak eklendi.</p>
+            <div class="alert alert-secondary border-0 d-inline-block fw-bold">Toplam Şikayet: <span id="modal-sayi">-</span></div>
+            <button class="btn btn-dark w-100 mt-3" onclick="location.reload()">ANLAŞILDI</button>
+        </div>
+      </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        if(localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-mode');
+
+        // Tarsus Koordinatları
+        const map = L.map('map', {zoomControl: false}).setView([36.9177, 34.8928], 14);
+        L.control.zoom({position: 'bottomright'}).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        const marker = L.marker([36.9177, 34.8928], { draggable: true }).addTo(map);
+
+        document.getElementById('lat').value = 36.9177;
+        document.getElementById('lng').value = 34.8928;
+
+        function updateStatus(state, text) {
+            const iconBox = document.getElementById('status-icon');
+            const title = document.getElementById('status-title');
+            const desc = document.getElementById('status-desc');
+
+            if(state === 'loading') {
+                iconBox.innerHTML = '<i class="fas fa-sync fa-spin"></i>';
+                iconBox.style.background = '#f59e0b';
+                title.innerText = 'Konum Aranıyor...';
+                desc.innerText = text || 'Lütfen bekleyiniz.';
+            } else if(state === 'found') {
+                iconBox.innerHTML = '<i class="fas fa-map-pin"></i>';
+                iconBox.style.background = '#10b981';
+                iconBox.classList.add('pulse-icon');
+                title.innerText = 'Konum Güncellendi';
+                desc.innerText = text;
+                setTimeout(() => iconBox.classList.remove('pulse-icon'), 2000);
+            }
+        }
+
+        window.getLocation = function() {
+            if (navigator.geolocation) {
+                updateStatus('loading', 'Uydu bağlantısı kuruluyor...');
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        map.setView([lat, lng], 18);
+                        marker.setLatLng([lat, lng]);
+                        document.getElementById('lat').value = lat;
+                        document.getElementById('lng').value = lng;
+                        marker.fire('dragend');
+                    },
+                    (err) => {
+                        alert("Konum alınamadı.");
+                        updateStatus('found', 'Manuel işaretleme yapınız.');
+                    }
+                );
+            } else {
+                alert("Tarayıcınız GPS desteklemiyor.");
+            }
+        };
+
+        window.previewFile = function() {
+            const fileInput = document.getElementById('foto');
+            const fileText = document.getElementById('file-text');
+            if(fileInput.files && fileInput.files[0]) {
+                fileText.innerHTML = `<i class="fas fa-check-circle text-success fa-2x"></i><br><span class="fw-bold text-dark">${fileInput.files[0].name}</span>`;
+            }
+        };
+
+        marker.on('dragstart', () => { updateStatus('loading'); });
+        marker.on('dragend', function(e) {
+            const { lat, lng } = e.target.getLatLng();
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then(r=>r.json()).then(d=>{
+                if(d.address) {
+                    const mahalle = d.address.suburb || d.address.neighbourhood || "";
+                    const sokak = d.address.road || "";
+                    document.getElementById('mahalle').value = mahalle;
+                    document.getElementById('sokak').value = sokak;
+                    updateStatus('found', `${mahalle}, ${sokak}`);
+                }
+            });
+        });
+
+        let debounceTimer;
+        window.autoLocate = function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const mahalle = document.getElementById('mahalle').value;
+                const sokak = document.getElementById('sokak').value;
+                if(mahalle.length < 2) return;
+
+                updateStatus('loading', 'Adres haritada aranıyor...');
+                const query = `${sokak} ${mahalle} Tarsus Mersin`;
+
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if(data && data.length > 0) {
+                        const lat = parseFloat(data[0].lat);
+                        const lon = parseFloat(data[0].lon);
+                        map.setView([lat, lon], 17);
+                        marker.setLatLng([lat, lon]);
+                        document.getElementById('lat').value = lat;
+                        document.getElementById('lng').value = lon;
+                        updateStatus('found', 'Harita adrese göre güncellendi.');
+                    }
+                });
+            }, 500);
+        };
+
+        window.submitForm = function() {
+            const aciklama = document.getElementById('aciklama').value.trim();
+            if(!aciklama) return alert("Lütfen arıza tanımı giriniz.");
+
+            const btn = document.querySelector('.btn-official');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-brain fa-pulse me-2"></i> Yapay Zeka Analiz Ediyor...';
+
+            const formData = new FormData();
+            formData.append("aciklama", aciklama);
+            formData.append("mahalle", document.getElementById('mahalle').value);
+            formData.append("sokak", document.getElementById('sokak').value);
+            formData.append("lat", document.getElementById('lat').value);
+            formData.append("lng", document.getElementById('lng').value);
+            const f = document.getElementById('foto').files[0];
+            if(f) formData.append("foto", f);
+
+            fetch("/submit", { method: "POST", body: formData }).then(r=>r.json()).then(d=>{
+                btn.disabled = false; btn.innerHTML = originalText;
+
+                if (d.durum === "merged") {
+                    document.getElementById('modal-sayi').innerText = d.yeni_sayi;
+                    new bootstrap.Modal(document.getElementById('mergedModal')).show();
+                } else if(d.durum === "ok") {
+                    document.getElementById('track-id').innerText = "TR-" + Math.floor(1000 + Math.random()*9000);
+                    document.getElementById('modal-tur').innerText = d.tur;
+                    document.getElementById('modal-oncelik').innerText = d.oncelik;
+                    document.getElementById('modal-sure').innerText = d.tahmini_sure;
+
+                    const iconEl = document.getElementById('receipt-icon');
+                    const headerEl = document.getElementById('receipt-header-bg');
+
+                    // --- İKON ve RENK MANTIĞI (REVİZE EDİLDİ) ---
+                    iconEl.className = 'fas fa-4x';
+
+                    let headerColor = "#f59e0b"; // Varsayılan Turuncu
+
+                    switch(d.tur) {
+                        case "Elektrik":
+                            iconEl.classList.add('fa-bolt');
+                            headerColor = "#ffc107"; // Sarı
+                            break;
+                        case "Su":
+                            iconEl.classList.add('fa-faucet');
+                            headerColor = "#0dcaf0"; // Mavi
+                            break;
+                        case "Kanalizasyon": /* YENİ EKLENEN KISIM */
+                            iconEl.classList.add('fa-biohazard');
+                            headerColor = "#795548"; // Kahverengi
+                            break;
+                        case "Çöp":
+                            iconEl.classList.add('fa-trash-alt');
+                            headerColor = "#198754"; // Yeşil
+                            break;
+                        case "Yol":
+                            iconEl.classList.add('fa-road');
+                            headerColor = "#6c757d"; // Gri
+                            break;
+                        case "Park/Bahçe":
+                            iconEl.classList.add('fa-tree');
+                            headerColor = "#20c997"; // Teal
+                            break;
+                        case "Trafik":
+                            iconEl.classList.add('fa-traffic-light');
+                            headerColor = "#dc3545"; // Kırmızı
+                            break;
+                        default:
+                            iconEl.classList.add('fa-check-circle');
+                            headerColor = "#f59e0b"; // Turuncu
+                    }
+
+                    headerEl.style.backgroundColor = headerColor;
+
+                    new bootstrap.Modal(document.getElementById('successModal')).show();
+                } else alert("Hata: " + d.message);
+            }).catch(err => {
+                 console.log("Hata:", err);
+                 btn.disabled = false; btn.innerHTML = originalText;
+            });
+        }
+    });
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('ServiceWorker başarıyla kaydedildi. Kapsam:', registration.scope);
+      })
+      .catch(err => {
+        console.log('ServiceWorker kaydı başarısız oldu:', err);
+      });
+  });
+}
+</script>
+</body>
+</html>
